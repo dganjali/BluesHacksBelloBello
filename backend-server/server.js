@@ -272,27 +272,63 @@ app.get('/api/inventory', verifyToken, async (req, res) => {
 
 app.post('/api/inventory/add', verifyToken, async (req, res) => {
   try {
+    const userId = req.user.id;
     const { type, category, quantity, expiration_date } = req.body;
     
+    // Get nutritional info first
     const nutritionalValue = await getNutritionalInfo(type);
     if (!nutritionalValue) {
       return res.status(400).json({ error: 'Could not fetch nutritional information' });
     }
 
+    // Create new stock item with nutritional values
     const newItem = new Stock({
       type,
       food_type: category,
       quantity: Number(quantity),
       expiration_date,
-      addedBy: req.user.id,  // Ensure user ID is added
+      addedBy: userId,
       nutritional_value: {
-        calories: nutritionalValue.calories,
-        sugars: nutritionalValue.sugars,
-        nutritional_ratio: nutritionalValue.calories / (nutritionalValue.sugars + 1)
+        calories: nutritionalValue.calories || 0,
+        sugars: nutritionalValue.sugars || 0,
+        nutritional_ratio: (nutritionalValue.calories || 0) / ((nutritionalValue.sugars || 0) + 1)
       }
     });
 
     await newItem.save();
+
+    // Update Python Excel file
+    const pythonProcess = spawn(process.platform === 'win32' ? 'python' : 'python3', [
+      path.resolve(__dirname, '../backend-model/api.py'),
+      'add_item',
+      JSON.stringify({
+        user_id: userId,
+        item_data: {
+          type,
+          category,
+          quantity: Number(quantity),
+          expiration_date,
+          nutritional_value: nutritionalValue
+        }
+      })
+    ]);
+
+    await new Promise((resolve, reject) => {
+      let pythonError = '';
+      
+      pythonProcess.stderr.on('data', (data) => {
+        pythonError += data.toString();
+      });
+
+      pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(pythonError));
+        } else {
+          resolve();
+        }
+      });
+    });
+
     res.json({ success: true, newItem });
   } catch (error) {
     console.error('Error adding inventory:', error);

@@ -11,20 +11,22 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, 'backend-model', 'user_data')
+
 class FoodBankDatabase:
     def __init__(self, user_id):
-        # start the database
         self.user_id = user_id
-        self.excel_path = f'backend-model/user_data/inventory_{user_id}.xlsx'
+        self.base_dir = DATA_DIR
+        self.inventory_path = os.path.join(self.base_dir, f'inventory_{user_id}.xlsx')
+        self.distribution_path = os.path.join(self.base_dir, f'distribution_plan_{user_id}.xlsx')
         self.ensure_user_directory()
-        
+    
     def ensure_user_directory(self):
-        directory = 'backend-model/user_data'
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+        os.makedirs(self.base_dir, exist_ok=True)
         
-        if not os.path.exists(self.excel_path):
-            # excel columns (case-sensitive!!)
+        # Create inventory file if it doesn't exist
+        if not os.path.exists(self.inventory_path):
             df = pd.DataFrame(columns=[
                 'food_item',
                 'food_type',
@@ -36,29 +38,24 @@ class FoodBankDatabase:
                 'nutritional_ratio',
                 'weekly_customers'
             ])
-            # save empty data frane
-            df.to_excel(self.excel_path, index=False)
-            print(f"Created new inventory file for user {self.user_id}")
+            df.to_excel(self.inventory_path, index=False)
+            
+        # Create distribution plan file if it doesn't exist
+        if not os.path.exists(self.distribution_path):
+            df = pd.DataFrame(columns=[
+                'food_item',
+                'food_type',
+                'days_until_expiry',
+                'current_quantity',
+                'recommended_quantity',
+                'priority_score',
+                'rank'
+            ])
+            df.to_excel(self.distribution_path, index=False)
     
     def add_inventory_item(self, item_data):
-        """Add new inventory item to user's Excel file."""
         try:
-            self.ensure_user_directory()
-            
-            try:
-                df = pd.read_excel(self.excel_path)
-            except:
-                df = pd.DataFrame(columns=[
-                    'food_item',
-                    'food_type',
-                    'current_quantity',
-                    'expiration_date',
-                    'days_until_expiry',
-                    'calories',
-                    'sugars',
-                    'nutritional_ratio',
-                    'weekly_customers'
-                ])
+            df = pd.read_excel(self.inventory_path)
             
             new_row = {
                 'food_item': item_data['type'],
@@ -73,8 +70,7 @@ class FoodBankDatabase:
             }
             
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            df.to_excel(self.excel_path, index=False)
-            print(f"Successfully added item to inventory for user {self.user_id}")
+            df.to_excel(self.inventory_path, index=False)
             return True
         except Exception as e:
             print(f"Error adding inventory item: {str(e)}")
@@ -84,7 +80,7 @@ class FoodBankDatabase:
         
         try:
             # read the excel rows
-            df = pd.read_excel(self.excel_path)
+            df = pd.read_excel(self.inventory_path)
             
             # change columns names so they are more formal 
             column_mapping = {

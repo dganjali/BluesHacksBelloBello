@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
             
             const data = await response.json();
-            if (data.success) {
+            if (data.success && data.distribution_plan) {
                 updateDistributionPlanTable(data.distribution_plan);
             } else {
                 console.error('Failed to get distribution plan:', data.error);
@@ -157,18 +157,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Update the add stock form handler
     const addStockFormHandler = async (e) => {
         e.preventDefault();
-
-        const type = foodTypeInput.value;
-        const category = document.getElementById("food-category").value;
-        const quantity = document.getElementById("quantity").value;
-        const expiration_date = document.getElementById("expiration-date").value;
-
-        if (!type || !category || !quantity || !expiration_date) {
-            alert("Please fill in all fields");
-            return;
-        }
+        const submitButton = addStockForm.querySelector('button[type="submit"]');
+        const originalText = submitButton.textContent;
 
         try {
+            const type = foodTypeInput.value;
+            const category = document.getElementById("food-category").value;
+            const quantity = document.getElementById("quantity").value;
+            const expiration_date = document.getElementById("expiration-date").value;
+
+            if (!type || !category || !quantity || !expiration_date) {
+                alert("Please fill in all fields");
+                return;
+            }
+
+            // Show loading state
+            submitButton.textContent = 'Adding...';
+            submitButton.disabled = true;
+
             const response = await fetch(`${API_BASE}/api/inventory/add`, {
                 method: "POST",
                 headers: { 
@@ -190,14 +196,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
 
             if (data.success) {
-                const row = createInventoryRow(data.newItem);
-                inventoryBody.insertBefore(row, inventoryBody.firstChild);
                 addStockForm.reset();
                 await fetchInventory();
             }
         } catch (error) {
             console.error("Error adding stock:", error);
             alert(error.message || "An error occurred while adding stock");
+        } finally {
+            // Always restore button state, even if there's an error
+            submitButton.textContent = originalText || 'Add';
+            submitButton.disabled = false;
         }
     };
 
@@ -292,12 +300,24 @@ document.addEventListener("DOMContentLoaded", async () => {
             refreshButton.textContent = 'Refreshing...';
             refreshButton.disabled = true;
 
+            // First, update the backend inventory file
+            const inventoryData = await fetch(`${API_BASE}/api/inventory`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            }).then(res => res.json());
+
+            // Then get new predictions and update distribution plan
             const response = await fetch(`${API_BASE}/api/predict`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
-                }
+                },
+                body: JSON.stringify({
+                    user_id: token,
+                    inventory_data: inventoryData
+                })
             });
             
             if (!response.ok) {
@@ -308,6 +328,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             
             if (data.success) {
                 updateDistributionPlanTable(data.distribution_plan);
+                // Save the updated plan to localStorage for persistence
+                localStorage.setItem('distributionPlan', JSON.stringify(data.distribution_plan));
             } else {
                 console.error('Failed to refresh distribution plan:', data.error);
                 alert('Failed to refresh distribution plan: ' + (data.error || 'Unknown error'));
