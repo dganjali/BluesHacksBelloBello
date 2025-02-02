@@ -32,10 +32,7 @@ mongoose.connect(MONGODB_URI, {
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 30000, // Increased timeout
     retryWrites: true,
-    w: 'majority',
-    ssl: true,
-    tlsAllowInvalidCertificates: false,
-    authSource: 'admin'
+    w: 'majority'
 }).then(() => {
     console.log('Connected to MongoDB');
 }).catch((err) => {
@@ -44,7 +41,7 @@ mongoose.connect(MONGODB_URI, {
 
 // MongoDB schemas
 const StockSchema = new mongoose.Schema({
-  type: String, // food item name
+  type: String,
   food_type: {
     type: String,
     enum: ['Snacks', 'Protein', 'Vegetables', 'Grain', 'Dairy', 'Canned Goods'],
@@ -52,12 +49,22 @@ const StockSchema = new mongoose.Schema({
   },
   quantity: Number,
   expiration_date: Date,
-  days_until_expiry: Number,
+  days_until_expiry: {
+    type: Number,
+    default: function() {
+      return Math.ceil((this.expiration_date - new Date()) / (1000 * 60 * 60 * 24));
+    }
+  },
   weekly_customers: { type: Number, default: 100 },
   nutritional_value: {
     calories: Number,
     sugars: Number,
-    nutritional_ratio: Number
+    nutritional_ratio: {
+      type: Number,
+      default: function() {
+        return this.nutritional_value.calories / (this.nutritional_value.sugars + 1);
+      }
+    }
   },
   addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now }

@@ -151,7 +151,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     // Update the add stock form handler
-    addStockForm.addEventListener("submit", async (e) => {
+    const addStockFormHandler = async (e) => {
         e.preventDefault();
 
         const type = foodTypeInput.value;
@@ -179,27 +179,25 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }),
             });
 
+            const data = await response.json();
+
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to add stock');
+                throw new Error(data.error || data.details || 'Failed to add stock');
             }
 
-            const data = await response.json();
             if (data.success) {
                 const row = createInventoryRow(data.newItem);
                 inventoryBody.insertBefore(row, inventoryBody.firstChild);
                 addStockForm.reset();
-                
-                // Refresh inventory to update distribution plan
                 await fetchInventory();
-            } else {
-                alert(data.error || "Failed to add stock");
             }
         } catch (error) {
             console.error("Error adding stock:", error);
             alert(error.message || "An error occurred while adding stock");
         }
-    });
+    };
+
+    addStockForm.addEventListener("submit", addStockFormHandler);
 
     // Add autocomplete functionality
     const handleFoodTypeInput = async (query) => {
