@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "backend-server/server.js": {
+    "backend-server/api/server.js": {
       "memory": 1024,
       "maxDuration": 10
     }
