@@ -30,10 +30,11 @@ const NUTRITIONIX_API_KEY = process.env.NUTRITIONIX_API_KEY;
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 30000, // Increased timeout
+    serverSelectionTimeoutMS: 30000,
     retryWrites: true,
     w: 'majority',
     ssl: true,
+    tls: true,
     authSource: 'admin'
 }).then(() => {
     console.log('Connected to MongoDB Atlas');
