@@ -257,18 +257,26 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Could not fetch nutritional information' });
     }
 
+    // Calculate days until expiry and nutritional ratio
+    const daysUntilExpiry = Math.ceil((new Date(expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
+    const nutritionalRatio = nutritionalValue.calories / (nutritionalValue.sugars + 1);
+
     const newItem = new Stock({
       type,
-      category,
-      quantity,
+      food_type: category,
+      quantity: Number(quantity),
       expiration_date,
-      nutritional_value: nutritionalValue,
+      days_until_expiry: daysUntilExpiry,
+      nutritional_value: {
+        ...nutritionalValue,
+        nutritional_ratio: nutritionalRatio
+      },
       addedBy: req.user.id
     });
 
     await newItem.save();
 
-    // Update user's Excel file
+    // Update Python model's Excel file
     const pythonProcess = spawn('python', [
       path.join(__dirname, '../backend-model/api.py'),
       'add_item',
@@ -277,21 +285,34 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
         item_data: {
           type,
           category,
-          quantity,
+          quantity: Number(quantity),
           expiration_date,
-          nutritional_value: nutritionalValue
+          nutritional_value: {
+            calories: nutritionalValue.calories,
+            sugars: nutritionalValue.sugars
+          }
         }
       })
     ]);
 
+    let pythonError = '';
     pythonProcess.stderr.on('data', (data) => {
-      console.error(`Python Error: ${data}`);
+      pythonError += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error('Python Error:', pythonError);
+      }
     });
 
     res.json({ success: true, newItem });
   } catch (error) {
     console.error('Error adding inventory:', error);
-    res.status(500).json({ error: 'Failed to add item to inventory' });
+    res.status(500).json({ 
+      error: 'Failed to add item to inventory',
+      details: error.message 
+    });
   }
 });
 
@@ -313,53 +334,57 @@ app.delete('/api/inventory/delete/:id', verifyToken, async (req, res) => {
 });
 
 app.post('/api/predict', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const inventoryData = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
-        
-        // Spawn Python process with user ID
-        const pythonProcess = spawn('python', [
-            path.join(__dirname, '../backend-model/api.py'),
-            'predict',
-            JSON.stringify({
-                user_id: userId,
-                inventory_data: inventoryData
-            })
-        ]);
+  try {
+    const userId = req.user.id;
+    const inventory = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
 
-        let result = '';
+    const pythonProcess = spawn('python', [
+      path.join(__dirname, '../backend-model/api.py'),
+      'predict',
+      JSON.stringify({
+        user_id: userId,
+        inventory_data: inventory
+      })
+    ]);
 
-        pythonProcess.stdout.on('data', (data) => {
-            result += data.toString();
+    let result = '';
+    let pythonError = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      result += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      pythonError += data.toString();
+      console.error('Python Error:', data.toString());
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to process prediction',
+          details: pythonError
         });
-
-        pythonProcess.stderr.on('data', (data) => {
-            console.error(`Python Error: ${data}`);
-        });
-
-        pythonProcess.on('close', (code) => {
-            if (code !== 0) {
-                return res.status(500).json({ 
-                    success: false, 
-                    error: 'Failed to process prediction' 
-                });
-            }
-            try {
-                const predictionData = JSON.parse(result);
-                res.json(predictionData);
-            } catch (error) {
-                res.status(500).json({ 
-                    success: false, 
-                    error: 'Failed to parse prediction results' 
-                });
-            }
-        });
-    } catch (error) {
+      }
+      try {
+        const predictionData = JSON.parse(result);
+        res.json(predictionData);
+      } catch (error) {
         res.status(500).json({ 
-            success: false, 
-            error: 'Failed to get inventory data' 
+          success: false, 
+          error: 'Failed to parse prediction results',
+          details: error.message
         });
-    }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get inventory data',
+      details: error.message
+    });
+  }
 });
 
 // Serve the sign-in page on root

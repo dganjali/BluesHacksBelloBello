@@ -41,12 +41,10 @@ class FoodBankDatabase:
             print(f"Created new inventory file for user {self.user_id}")
     
     def add_inventory_item(self, item_data):
-        
+        """Add new inventory item to user's Excel file."""
         try:
-           
             self.ensure_user_directory()
             
-            # take info from data frame and then map it as well
             try:
                 df = pd.read_excel(self.excel_path)
             except:
@@ -62,7 +60,6 @@ class FoodBankDatabase:
                     'weekly_customers'
                 ])
             
-            
             new_row = {
                 'food_item': item_data['type'],
                 'food_type': item_data['category'],
@@ -72,14 +69,12 @@ class FoodBankDatabase:
                 'calories': item_data['nutritional_value']['calories'],
                 'sugars': item_data['nutritional_value']['sugars'],
                 'nutritional_ratio': item_data['nutritional_value']['calories'] / (item_data['nutritional_value']['sugars'] + 1),
-                'weekly_customers': 100  # base value (according to experiences, foodbank size etc)
+                'weekly_customers': 100
             }
             
-            # append
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            
-            # save
             df.to_excel(self.excel_path, index=False)
+            print(f"Successfully added item to inventory for user {self.user_id}")
             return True
         except Exception as e:
             print(f"Error adding inventory item: {str(e)}")
