@@ -281,6 +281,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Add refresh distribution plan button handler
     document.getElementById('refresh-distribution').addEventListener('click', async () => {
         try {
+            const loadingText = 'Refreshing...';
+            const originalText = document.getElementById('refresh-distribution').textContent;
+            document.getElementById('refresh-distribution').textContent = loadingText;
+            document.getElementById('refresh-distribution').disabled = true;
+
             const response = await fetch(`${API_BASE}/api/predict`, {
                 method: 'POST',
                 headers: {
@@ -290,15 +295,157 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
             
             const data = await response.json();
+            
             if (data.success) {
                 updateDistributionPlanTable(data.distribution_plan);
             } else {
                 console.error('Failed to refresh distribution plan:', data.error);
-                alert('Failed to refresh distribution plan');
+                alert('Failed to refresh distribution plan: ' + data.error);
             }
         } catch (error) {
             console.error('Error refreshing distribution plan:', error);
             alert('Error refreshing distribution plan');
+        } finally {
+            document.getElementById('refresh-distribution').textContent = originalText;
+            document.getElementById('refresh-distribution').disabled = false;
         }
     });
+});
+
+app.post('/api/predict', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const inventory = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
+
+    if (!inventory.length) {
+      return res.json({
+        success: true,
+        distribution_plan: []
+      });
+    }
+
+    const formattedInventory = inventory.map(item => ({
+      food_item: item.type,
+      food_type: item.food_type,
+      current_quantity: item.quantity,
+      expiration_date: item.expiration_date,
+      days_until_expiry: Math.ceil((new Date(item.expiration_date) - new Date()) / (1000 * 60 * 60 * 24)),
+      calories: item.nutritional_value.calories,
+      sugars: item.nutritional_value.sugars,
+      nutritional_ratio: item.nutritional_value.calories / (item.nutritional_value.sugars + 1),
+      weekly_customers: item.weekly_customers || 100
+    }));
+
+    const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
+    const pythonProcess = spawn(pythonPath, [
+      path.resolve(__dirname, '../backend-model/api.py'),
+      'predict',
+      JSON.stringify({
+        user_id: userId,
+        inventory_data: formattedInventory
+      })
+    ]);
+
+    let result = '';
+    let pythonError = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      result += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      pythonError += data.toString();
+      console.error('Python Error:', data.toString());
+    });
+
+    return new Promise((resolve, reject) => {
+      pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+          console.error('Python process failed:', pythonError);
+          reject(new Error(`Python process failed: ${pythonError}`));
+          return;
+        }
+
+        try {
+          console.log('Raw Python output:', result);
+          const predictionData = JSON.parse(result.trim());
+          resolve(res.json(predictionData));
+        } catch (error) {
+          console.error('Failed to parse Python output:', error);
+          console.error('Raw output:', result);
+          reject(new Error('Failed to parse prediction results'));
+        }
+      });
+
+      pythonProcess.on('error', (error) => {
+        console.error('Python process error:', error);
+        reject(new Error(`Failed to start Python process: ${error.message}`));
+      });
+    });
+  } catch (error) {
+    console.error('Error in distribution plan:', error);
+    throw error;
+  }
+});
+
+// Update distribution plan table
+function updateDistributionPlanTable(plan) {
+  const tbody = document.getElementById('distribution-plan-body');
+  tbody.innerHTML = '';
+
+  plan.forEach(item => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${item.food_item}</td>
+      <td>${item.current_quantity}</td>
+      <td>${Math.round(item.recommended_quantity)}</td>
+      <td>${item.priority_score.toFixed(2)}</td>
+      <td>${item.rank}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+// Event listener for logout
+document.getElementById('logout').addEventListener('click', () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('username');
+  window.location.href = '/signin.html';
+});
+
+// Form validation
+function validateForm() {
+  const type = document.getElementById('food-type').value;
+  const category = document.getElementById('food-category').value;
+  const quantity = document.getElementById('quantity').value;
+  const expiration = document.getElementById('expiration-date').value;
+
+  if (!type || !category || !quantity || !expiration) {
+    alert('Please fill in all fields');
+    return false;
+  }
+
+  if (quantity <= 0) {
+    alert('Quantity must be greater than 0');
+    return false;
+  }
+
+  const expirationDate = new Date(expiration);
+  if (expirationDate < new Date()) {
+    alert('Expiration date must be in the future');
+    return false;
+  }
+
+  return true;
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await fetchInventory();
+    await fetchDistributionPlan();
+  } catch (error) {
+    console.error('Initialization error:', error);
+    alert('Failed to initialize dashboard');
+  }
 });

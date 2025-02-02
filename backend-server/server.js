@@ -372,7 +372,13 @@ app.post('/api/predict', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const inventory = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
 
-    // Convert inventory data to the format expected by Python
+    if (!inventory.length) {
+      return res.json({
+        success: true,
+        distribution_plan: []
+      });
+    }
+
     const formattedInventory = inventory.map(item => ({
       food_item: item.type,
       food_type: item.food_type,
@@ -409,40 +415,33 @@ app.post('/api/predict', verifyToken, async (req, res) => {
 
     pythonProcess.on('error', (error) => {
       console.error('Failed to start Python process:', error);
-      res.status(500).json({ 
-        success: false, 
-        error: 'Failed to start Python process',
-        details: error.message
-      });
+      throw new Error(`Python process error: ${error.message}`);
     });
 
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        return res.status(500).json({ 
-          success: false, 
-          error: 'Failed to process prediction',
-          details: pythonError
-        });
-      }
-      try {
-        const predictionData = JSON.parse(result);
-        res.json(predictionData);
-      } catch (error) {
-        console.error('Error parsing prediction data:', error);
-        console.error('Raw result:', result);
-        res.status(500).json({ 
-          success: false, 
-          error: 'Failed to parse prediction results',
-          details: error.message
-        });
-      }
+    await new Promise((resolve, reject) => {
+      pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Python process failed: ${pythonError}`));
+        } else {
+          try {
+            const predictionData = JSON.parse(result);
+            resolve(predictionData);
+          } catch (error) {
+            reject(new Error(`Failed to parse prediction results: ${error.message}`));
+          }
+        }
+      });
+    }).then(predictionData => {
+      res.json(predictionData);
+    }).catch(error => {
+      throw error;
     });
+
   } catch (error) {
     console.error('Prediction error:', error);
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to get inventory data',
-      details: error.message
+      error: error.message || 'Failed to get distribution plan'
     });
   }
 });
