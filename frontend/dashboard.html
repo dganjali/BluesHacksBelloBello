@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <img src="images/logo.png" alt="Food Bank Logo" class="logo">
+            <!-- <h1>Food Bank Inventory Management</h1> -->
+        </div>
+        <div class="header-right">
+            <span class="user-greeting">Hello, <span id="username-display"></span></span>
+            <button id="logoutButton">Logout</button>
+        </div>
+    </header>
+
+    <div id="dashboard">
+        <!-- Inventory Section -->
+        <section id="inventory">
+            <h2>Current Stock</h2>
+            <table id="inventory-table">
+                <thead>
+                    <tr>
+                        <th>Food Type</th>
+                        <th>Quantity</th>
+                        <th>Expiration Date</th>
+                        <th>Nutritional Information</th>
+                    </tr>
+                </thead>
+                <tbody id="inventory-body">
+                    <!-- Inventory rows will be inserted dynamically -->
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Add Stock Form -->
+        <section id="add-stock">
+            <h2>Add New Stock</h2>
+            <form id="add-stock-form">
+                <div class="autocomplete-container">
+                    <input type="text" id="food-type" placeholder="Food Type" required>
+                    <div id="suggestions-list" class="suggestions"></div>
+                </div>
+                <input type="number" id="quantity" placeholder="Quantity" required>
+                <input type="date" id="expiration-date" required>
+                <button type="submit">Add Stock</button>
+            </form>
+        </section>
+    </div>
+
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>
