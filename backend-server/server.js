@@ -18,6 +18,9 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
+app.use('/css', express.static(path.join(__dirname, '../frontend/css')));
+app.use('/js', express.static(path.join(__dirname, '../frontend/js')));
+app.use('/images', express.static(path.join(__dirname, '../frontend/images')));
 
 // Environment variables
 const PORT = process.env.PORT || 5001;
@@ -26,20 +29,38 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const NUTRITIONIX_APP_ID = process.env.NUTRITIONIX_APP_ID;
 const NUTRITIONIX_API_KEY = process.env.NUTRITIONIX_API_KEY;
 
+// Nutritionix API Integration
+const searchNutritionix = debounce(async (query) => {
+  try {
+    const response = await axios.get(
+      'https://trackapi.nutritionix.com/v2/search/instant',
+      {
+        params: { query },
+        headers: {
+          'x-app-id': NUTRITIONIX_APP_ID,
+          'x-app-key': NUTRITIONIX_API_KEY
+        }
+      }
+    );
+    return response.data.common.slice(0, 5).map(item => item.food_name);
+  } catch (error) {
+    console.error('Error searching Nutritionix:', error);
+    return [];
+  }
+}, 300);
+
 // MongoDB connection
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 30000,
+    serverSelectionTimeoutMS: 5000,
     retryWrites: true,
-    w: 'majority',
-    ssl: true,
-    tls: true,
-    authSource: 'admin'
+    w: 'majority'
 }).then(() => {
     console.log('Connected to MongoDB Atlas');
 }).catch((err) => {
     console.error('MongoDB connection error:', err);
+    process.exit(1); // Exit if MongoDB connection fails
 });
 
 // MongoDB schemas
@@ -91,26 +112,6 @@ const verifyToken = (req, res, next) => {
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
 };
-
-// Nutritionix API Integration
-const searchNutritionix = debounce(async (query) => {
-  try {
-    const response = await axios.get(
-      'https://trackapi.nutritionix.com/v2/search/instant',
-      {
-        params: { query },
-        headers: {
-          'x-app-id': NUTRITIONIX_APP_ID,
-          'x-app-key': NUTRITIONIX_API_KEY
-        }
-      }
-    );
-    return response.data.common.slice(0, 5).map(item => item.food_name);
-  } catch (error) {
-    console.error('Error searching Nutritionix:', error);
-    return [];
-  }
-}, 300);
 
 // Function to fetch nutritional info
 const getNutritionalInfo = async (foodType) => {
@@ -230,16 +231,32 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Inventory endpoints
-app.get('/api/search', async (req, res) => {
-  const { query } = req.query;
-  if (!query) return res.json([]);
+app.get('/api/search', verifyToken, async (req, res) => {
+    const { query } = req.query;
+    if (!query) return res.json([]);
 
-  try {
-    const suggestions = await searchNutritionix(query);
-    res.json(suggestions);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch suggestions' });
-  }
+    try {
+        const response = await axios.get(
+            'https://trackapi.nutritionix.com/v2/search/instant',
+            {
+                params: { query },
+                headers: {
+                    'x-app-id': NUTRITIONIX_APP_ID,
+                    'x-app-key': NUTRITIONIX_API_KEY,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        const suggestions = response.data.common.slice(0, 5).map(item => item.food_name);
+        res.json(suggestions);
+    } catch (error) {
+        console.error('Search error:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch suggestions',
+            details: error.message 
+        });
+    }
 });
 
 app.get('/api/inventory', verifyToken, async (req, res) => {
@@ -279,8 +296,8 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
 
     await newItem.save();
 
-    // Update Python model's Excel file
-    const pythonProcess = spawn('python', [
+    // Update Python model's Excel file with properly formatted data
+    const pythonProcess = spawn('python3', [
       path.join(__dirname, '../backend-model/api.py'),
       'add_item',
       JSON.stringify({
@@ -293,6 +310,18 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
           nutritional_value: {
             calories: nutritionalValue.calories,
             sugars: nutritionalValue.sugars
+          },
+          // Add formatted data for Excel
+          excel_data: {
+            food_item: type,
+            expiration: expiration_date,
+            days_until_expiration: daysUntilExpiry,
+            type_of_food: category,
+            quantity_available: Number(quantity),
+            calories_per_serving: nutritionalValue.calories,
+            sugars_per_serving: nutritionalValue.sugars,
+            customers_that_week: 100, // Default value
+            nutritional_ratio: nutritionalRatio
           }
         }
       })
@@ -301,11 +330,12 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
     let pythonError = '';
     pythonProcess.stderr.on('data', (data) => {
       pythonError += data.toString();
+      console.error('Python Error:', data.toString());
     });
 
     pythonProcess.on('close', (code) => {
       if (code !== 0) {
-        console.error('Python Error:', pythonError);
+        console.error('Python process error:', pythonError);
       }
     });
 
@@ -341,7 +371,7 @@ app.post('/api/predict', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const inventory = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
 
-    const pythonProcess = spawn('python', [
+    const pythonProcess = spawn('python3', [  // Changed from 'python' to 'python3'
       path.join(__dirname, '../backend-model/api.py'),
       'predict',
       JSON.stringify({
@@ -403,6 +433,47 @@ app.get('/dashboard', verifyToken, (req, res) => {
 // Serve other frontend pages (signup, index, etc.)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend', 'index.html'));
+});
+
+// API error handling
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    error: 'Internal Server Error',
+    details: err.message
+  });
+});
+
+// Frontend routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend', 'index.html'));
+});
+
+app.get('/signin', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend', 'signin.html'));
+});
+
+app.get('/signup', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend', 'signup.html'));
+});
+
+// Protected routes
+app.get('/dashboard', verifyToken, (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend', 'dashboard.html'));
+});
+
+// Handle 404s for HTML requests
+app.get('*.html', (req, res) => {
+  res.status(404).sendFile(path.join(__dirname, '../frontend', '404.html'));
+});
+
+// Handle 404s for API requests
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'API endpoint not found'
+  });
 });
 
 // Start server

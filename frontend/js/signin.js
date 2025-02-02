@@ -33,9 +33,13 @@ document.addEventListener("DOMContentLoaded", () => {
               })
           });
           
+          if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
           const data = await response.json();
 
-          if (response.ok && data.token) {
+          if (data.token) {
               // Save the token and the entered username (not data.username)
               localStorage.setItem("token", data.token);
               localStorage.setItem("username", username);
@@ -43,11 +47,11 @@ document.addEventListener("DOMContentLoaded", () => {
               // Redirect to the dashboard page
               window.location.href = "/dashboard.html";
           } else {
-              alert(data.error || "Login failed. Please check your credentials.");
+              alert(data.message || "Login failed. Please check your credentials.");
           }
       } catch (error) {
-          console.error("Error during login:", error);
-          alert("An error occurred during login. Please try again.");
+          console.error("Login error:", error);
+          alert("Server connection failed. Please try again.");
       }
   });
 });
