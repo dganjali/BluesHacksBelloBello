@@ -1,3 +1,7 @@
+const API_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:5001' 
+    : 'https://blueshacksbellobello.onrender.com';
+
 document.addEventListener("DOMContentLoaded", () => {
   // Clear any stored token and username on every load of the sign-in page
   localStorage.removeItem("token");
@@ -20,7 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       try {
           // Send a POST request to the login API
-          const response = await fetch("http://localhost:5001/api/login", {
+          const response = await fetch(`${API_URL}/api/login`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ 

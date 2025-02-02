@@ -6,8 +6,13 @@ document.getElementById('signup-form').addEventListener('submit', async (e) => {
     const password = document.getElementById('password').value;
     const message = document.getElementById('message');
 
+    // Define API URL based on environment
+    const API_URL = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5001' 
+        : 'https://blueshacksbellobello.onrender.com';
+
     try {
-        const response = await fetch('http://localhost:5001/api/signup', {
+        const response = await fetch(`${API_URL}/api/signup`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -19,17 +24,17 @@ document.getElementById('signup-form').addEventListener('submit', async (e) => {
 
         if (data.success) {
             message.textContent = 'Signup successful! Redirecting to signin...';
-            message.style.color = 'green';
+            message.className = 'success';
             setTimeout(() => {
-                window.location.href = 'signin.html'; // Remove the leading slash
+                window.location.href = 'signin.html';
             }, 1500);
         } else {
             message.textContent = data.message || 'Signup failed';
-            message.style.color = 'red';
+            message.className = 'error';
         }
     } catch (error) {
-        message.textContent = 'Error during signup. Please try again.';
-        message.style.color = 'red';
+        message.textContent = 'Error connecting to server. Please try again.';
+        message.className = 'error';
         console.error('Error during signup:', error);
     }
 });
