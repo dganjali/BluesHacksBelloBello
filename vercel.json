@@ -5,12 +5,6 @@
         "memory": 1024,
         "maxDuration": 10
       }
-    },
-    "builds": [
-      {
-        "src": "backend-server/server.js",
-        "use": "@vercel/node"
-      }
-    ]
+    }
   }
   
