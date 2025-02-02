@@ -9,6 +9,7 @@ const cors = require('cors');
 const axios = require('axios');
 const debounce = require('debounce-promise');
 const User = require('./models/User');
+const { spawn } = require('child_process');
 
 const app = express();
 app.use(cors({
@@ -268,6 +269,51 @@ app.delete('/api/inventory/delete/:id', verifyToken, async (req, res) => {
     } catch (error) {
         console.error('Delete error:', error);
         res.status(500).json({ error: 'Failed to delete item' });
+    }
+});
+
+app.post('/api/predict', verifyToken, async (req, res) => {
+    try {
+        const inventoryData = await Stock.find().sort({ createdAt: -1 });
+        
+        // Spawn Python process
+        const pythonProcess = spawn('python', [
+            path.join(__dirname, '../backend-model/api.py'),
+            JSON.stringify(inventoryData)
+        ]);
+
+        let result = '';
+
+        pythonProcess.stdout.on('data', (data) => {
+            result += data.toString();
+        });
+
+        pythonProcess.stderr.on('data', (data) => {
+            console.error(`Python Error: ${data}`);
+        });
+
+        pythonProcess.on('close', (code) => {
+            if (code !== 0) {
+                return res.status(500).json({ 
+                    success: false, 
+                    error: 'Failed to process prediction' 
+                });
+            }
+            try {
+                const predictionData = JSON.parse(result);
+                res.json(predictionData);
+            } catch (error) {
+                res.status(500).json({ 
+                    success: false, 
+                    error: 'Failed to parse prediction results' 
+                });
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get inventory data' 
+        });
     }
 });
 

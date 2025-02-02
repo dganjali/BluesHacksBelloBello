@@ -37,7 +37,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Fetch inventory data and update the table
     const fetchInventory = async () => {
-        inventoryBody.innerHTML = "";
         try {
             const response = await fetch(`${API_BASE}/api/inventory`, {
                 headers: {
@@ -46,13 +45,58 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
             const inventoryData = await response.json();
             
+            // Update inventory table
+            inventoryBody.innerHTML = "";
             inventoryData.forEach(item => {
                 const row = createInventoryRow(item);
                 inventoryBody.appendChild(row);
             });
+            
+            // Fetch distribution plan
+            await fetchDistributionPlan(inventoryData);
+            
         } catch (error) {
             console.error("Failed to load inventory data", error);
         }
+    };
+
+    // Add this function after fetchInventory
+    const fetchDistributionPlan = async (inventoryData) => {
+        try {
+            const response = await fetch(`${API_BASE}/api/predict`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                updateDistributionPlanTable(data.distribution_plan);
+            } else {
+                console.error('Failed to get distribution plan:', data.error);
+            }
+        } catch (error) {
+            console.error('Error fetching distribution plan:', error);
+        }
+    };
+
+    const updateDistributionPlanTable = (distributionPlan) => {
+        const tableBody = document.getElementById('distribution-plan-body');
+        tableBody.innerHTML = '';
+        
+        distributionPlan.forEach(item => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${item.food_item}</td>
+                <td>${item.current_quantity}</td>
+                <td>${Math.round(item.recommended_quantity)}</td>
+                <td>${item.priority_score.toFixed(2)}</td>
+                <td>${item.rank}</td>
+            `;
+            tableBody.appendChild(row);
+        });
     };
 
     // Update the inventory table row creation
