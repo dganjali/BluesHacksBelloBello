@@ -516,14 +516,3 @@ app.use('/api/*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-// Inventory endpoints
-
-// Fetch inventory items (protected route)
-app.get('/api/inventory', verifyToken, async (req, res) => {
-  try {
-    const inventory = await Stock.find({ addedBy: req.user.id }).sort({ createdAt: -1 });
-    res.json(inventory);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch inventory' });
-  }
-});
