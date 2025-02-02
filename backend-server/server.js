@@ -53,9 +53,10 @@ const searchNutritionix = debounce(async (query) => {
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 30000,
     retryWrites: true,
-    w: 'majority'
+    w: 'majority',
+    authSource: 'admin'
 }).then(() => {
     console.log('Connected to MongoDB Atlas');
 }).catch((err) => {
