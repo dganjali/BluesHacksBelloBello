@@ -12,7 +12,7 @@
 }
 
 body {
-    background-color: var(--beige);
+    background-color: white;
     min-height: 100vh;
 }
 
@@ -38,7 +38,7 @@ body {
 }
 
 .nav-logo {
-    height: 40px;
+    height: 80px;
     margin-right: 1rem;
     vertical-align: middle;
 }
@@ -58,7 +58,7 @@ body {
 
 /* Form Container */
 .form-container {
-    background-color: white;
+    background-color: #f0f0f0;
     padding: 2rem;
     border-radius: 10px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -130,7 +130,7 @@ th {
 }
 
 .logo {
-    max-width: 200px;
+    max-width: 400px;
     height: auto;
 }
 
@@ -144,7 +144,7 @@ th {
 }
 
 .auth-box {
-    background-color: white;
+    background-color: #f0f0f0;
     padding: 2rem;
     border-radius: 10px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -209,4 +209,82 @@ th {
 
 .suggestion-item:hover {
     background-color: var(--beige);
+}
+
+/* Dashboard Header */
+.dashboard-header {
+    background-color: rgb(255, 255, 255);
+    padding: 1rem 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left .logo {
+    height: 80px;
+    width: auto;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Dashboard Layout */
+.dashboard-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    padding: 0 2rem;
+}
+
+.full-width {
+    width: 100%;
+}
+
+.bottom-sections {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+#inventory {
+    background-color: rgb(200, 200, 200);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+#distribution-plan, #add-stock {
+    background-color: rgb(200, 200, 200);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: fit-content;
+}
+
+/* Index Page */
+.welcome-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    text-align: center;
+}
+
+.welcome-logo {
+    max-width: 300px;
+    margin-bottom: 2rem;
+}
+
+.welcome-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
 }

@@ -1,12 +1,11 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from datetime import datetime
 import os
 import warnings
-warnings.filterwarnings('ignore') ## ignore privacy wrnings for unidentified excel files, for instance
+warnings.filterwarnings('ignore')
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -60,12 +59,16 @@ class FoodBankDatabase:
                     'weekly_customers'
                 ])
             
+            # Calculate days until expiry
+            expiry_date = pd.to_datetime(item_data['expiration_date'])
+            days_until_expiry = (expiry_date - pd.Timestamp.now()).days
+
             new_row = {
                 'food_item': item_data['type'],
                 'food_type': item_data['category'],
                 'current_quantity': item_data['quantity'],
-                'expiration_date': item_data['expiration_date'],
-                'days_until_expiry': (pd.to_datetime(item_data['expiration_date']) - pd.Timestamp.now()).days,
+                'expiration_date': expiry_date,
+                'days_until_expiry': days_until_expiry,
                 'calories': item_data['nutritional_value']['calories'],
                 'sugars': item_data['nutritional_value']['sugars'],
                 'nutritional_ratio': item_data['nutritional_value']['calories'] / (item_data['nutritional_value']['sugars'] + 1),
@@ -73,7 +76,12 @@ class FoodBankDatabase:
             }
             
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            df.to_excel(self.excel_path, index=False)
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(self.excel_path), exist_ok=True)
+            
+            # Save with openpyxl engine
+            df.to_excel(self.excel_path, index=False, engine='openpyxl')
             print(f"Successfully added item to inventory for user {self.user_id}")
             return True
         except Exception as e:
@@ -81,69 +89,68 @@ class FoodBankDatabase:
             return False
 
     def load_data(self):
-        
         try:
-            # read the excel rows
+            if not os.path.exists(self.excel_path):
+                return pd.DataFrame()
+            
             df = pd.read_excel(self.excel_path)
+            if df.empty:
+                return df
+                
+            # Convert expiration_date to datetime if it's not already
+            df['expiration_date'] = pd.to_datetime(df['expiration_date'])
             
-            # change columns names so they are more formal 
-            column_mapping = {
-                'food item': 'food_item',
-                'expiration': 'expiration_date',
-                'days until expiration': 'days_until_expiry',
-                'type of food': 'food_type',
-                'quantity available': 'current_quantity',
-                'calories per serving': 'calories',
-                'sugars per serving': 'sugars',
-                'customers that week': 'weekly_customers',
-                'nutritional ratio (calories:sugars)': 'nutritional_ratio'
-            }
+            # Recalculate days_until_expiry
+            df['days_until_expiry'] = (df['expiration_date'] - pd.Timestamp.now()).dt.days
             
-            df = df.rename(columns=column_mapping)
+            # Ensure all numeric columns are properly typed
+            numeric_columns = ['current_quantity', 'calories', 'sugars', 'weekly_customers']
+            for col in numeric_columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
             
-            # handle an error if column number isnt precise
-            required_columns = set(column_mapping.values())
-            missing_columns = required_columns - set(df.columns)
-            
-            if missing_columns:
-                raise ValueError(f"Missing required columns: {missing_columns}")
+            # Replace any NaN values with appropriate defaults
+            df['weekly_customers'] = df['weekly_customers'].fillna(100)
+            df['nutritional_ratio'] = df['calories'] / (df['sugars'] + 1)
             
             return df
             
         except Exception as e:
-            raise Exception(f"Error loading Excel file: {str(e)}")
+            print(f"Error loading data: {str(e)}")
+            return pd.DataFrame()
 
 class FoodBankDistributionModel:
     def __init__(self):
         self.label_encoders = {}
         self.scaler = StandardScaler()
-        self.model = RandomForestRegressor(
+        # Switch to GradientBoostingRegressor for better predictions
+        self.model = GradientBoostingRegressor(
             n_estimators=100,
-            random_state=42,
-            n_jobs=-1
+            learning_rate=0.1,
+            random_state=42
         )
-        
+    
     def preprocess_data(self, df):
         if df.empty:
-            raise ValueError("Empty dataset provided. Please add inventory items first.")
+            return pd.DataFrame()
         
         processed_df = df.copy()
         
-        # Ensure we have data before processing
-        if len(processed_df) == 0:
-            raise ValueError("No data available for processing")
-
-        
-        # label the variables
+        # Handle categorical columns
         categorical_columns = ['food_type', 'food_item']
         for col in categorical_columns:
             if col not in self.label_encoders:
                 self.label_encoders[col] = LabelEncoder()
-                processed_df[col] = self.label_encoders[col].fit_transform(processed_df[col])
-            else:
-                processed_df[col] = self.label_encoders[col].transform(processed_df[col])
+            # Handle new categories that weren't in training
+            unique_values = processed_df[col].unique()
+            if hasattr(self.label_encoders[col], 'classes_'):
+                new_values = set(unique_values) - set(self.label_encoders[col].classes_)
+                if new_values:
+                    self.label_encoders[col].classes_ = np.concatenate([
+                        self.label_encoders[col].classes_,
+                        np.array(list(new_values))
+                    ])
+            processed_df[col] = self.label_encoders[col].fit_transform(processed_df[col])
         
-        # set up the features that we need
         feature_columns = [
             'days_until_expiry',
             'food_type',
@@ -156,98 +163,105 @@ class FoodBankDistributionModel:
         
         X = processed_df[feature_columns]
         
-        if hasattr(self, 'scaler_fit'):
-            X = pd.DataFrame(self.scaler.transform(X), columns=X.columns)
-        else:
-            X = pd.DataFrame(self.scaler.fit_transform(X), columns=X.columns)
-            self.scaler_fit = True
-            
+        # Scale features
+        X = pd.DataFrame(self.scaler.fit_transform(X), columns=X.columns)
+        
         return X
-        
+    
     def calculate_priority_scores(self, df):
-        """Calculation Note!* Based off industry customs and convention:
-        
-        The weightage percentage distribuition for variable types:
-
-        Current weights:
-
-        Expiration (40%): Items closer to expiration get higher priority
-        Nutritional ratio (25%): Better nutrition gets higher priority
-        Quantity vs customers (35%): Balance between stock and demand
-        """
+        if df.empty:
+            return np.array([])
+            
         scores = np.zeros(len(df))
         
-        # higher priority for items closer to expiration
-        scores += 1 / (df['days_until_expiry'] + 1) * 40
+        # Normalize values to 0-1 range for each component
+        expiry_score = 1 / (df['days_until_expiry'].clip(1) + 1)
+        nutritional_score = (df['nutritional_ratio'] - df['nutritional_ratio'].min()) / \
+                          (df['nutritional_ratio'].max() - df['nutritional_ratio'].min() + 1e-6)
+        quantity_score = df['current_quantity'] / df['weekly_customers']
         
-        # priority based on nutritional ratio
-        scores += df['nutritional_ratio'] * 25
+        # Weighted sum of components
+        scores = (
+            expiry_score * 0.4 +           # 40% weight for expiration
+            nutritional_score * 0.25 +     # 25% weight for nutrition
+            quantity_score * 0.35          # 35% weight for quantity/demand ratio
+        )
         
-        # priority based on current quantity vs weekly customers
-        scores += (df['current_quantity'] / df['weekly_customers']) * 35
+        # Normalize final scores to 0-1 range
+        scores = (scores - scores.min()) / (scores.max() - scores.min() + 1e-6)
         
         return scores
-        
+    
     def calculate_recommended_quantities(self, df):
-        """ As mentioned, calculate recommended quantities based on relevant customs and rules."""
-        # ratio between current quantity and weekly customers
-        base_quantity = df['current_quantity'] / df['weekly_customers']
+        if df.empty:
+            return np.array([])
+            
+        # Base calculation on weekly customers and current quantity
+        base = df['weekly_customers'] * 0.1  # Start with 10% of weekly customers
         
-        # using the expiry weight to adjust
-        expiry_factor = 1 + (1 / (df['days_until_expiry'] + 1))
+        # Adjust based on days until expiry (distribute more if closer to expiry)
+        expiry_factor = 1 + (1 / (df['days_until_expiry'].clip(1) + 1))
         
-        # using the nutritional weight to adjust 
+        # Adjust based on nutritional value
         nutrition_factor = 1 + (df['nutritional_ratio'] / df['nutritional_ratio'].max())
         
-        # multiply all the ratios for final quantity
-        quantities = base_quantity * expiry_factor * nutrition_factor
+        # Calculate final quantities
+        quantities = base * expiry_factor * nutrition_factor
         
-        # also, each person should get at least 1 unit
-        quantities = np.maximum(quantities, 1)  
+        # Ensure we don't recommend more than current quantity
+        quantities = quantities.clip(1, df['current_quantity'])
         
-        return quantities
-        
+        return quantities.round()
+    
     def train(self, df):
         if df.empty:
-            raise ValueError("Empty dataset provided. Please add inventory items first.")
-        
+            return
+            
         X = self.preprocess_data(df)
-        
-        # Ensure we have data before training
-        if len(X) == 0:
-            raise ValueError("No data available for training")
-        
-        # need to target priority_score and recommended_quantity, its a two-dimensional output to the regressional model
         y_priority = self.calculate_priority_scores(df)
         y_quantity = self.calculate_recommended_quantities(df)
         
-        # fit and train
+        # Train model on both targets
         self.model.fit(X, np.column_stack((y_priority, y_quantity)))
     
     def predict(self, df):
-        
+        if df.empty:
+            return {'priority_scores': [], 'recommended_quantities': []}
+            
         X = self.preprocess_data(df)
         predictions = self.model.predict(X)
         
-        return {
-            'priority_scores': predictions[:, 0],
-            'recommended_quantities': predictions[:, 1]
-        }
+        # Ensure predictions are within valid ranges
+        priority_scores = predictions[:, 0].clip(0, 1)
+        recommended_quantities = predictions[:, 1].clip(1, df['current_quantity'].max())
         
+        return {
+            'priority_scores': priority_scores,
+            'recommended_quantities': recommended_quantities.round()
+        }
+    
     def get_distribution_plan(self, df):
-        # generating a distriubiton plan to be loaded to another excel here
+        if df.empty:
+            return df
+            
         predictions = self.predict(df)
         
-        # create a new dataframe, but for results
         results = df.copy()
         results['priority_score'] = predictions['priority_scores']
         results['recommended_quantity'] = predictions['recommended_quantities']
         
-        # sort via priority score
-        results = results.sort_values('priority_score', ascending=False)
-        
-        # append the ranks
+        # Sort by priority score descending and take top 10
+        results = results.sort_values('priority_score', ascending=False).head(10)
         results['rank'] = range(1, len(results) + 1)
+        
+        # Save the top 10 distribution plan with timestamp
+        if hasattr(self, 'user_id'):
+            # Use consistent naming pattern for distribution plan file
+            output_path = f'backend-model/user_data/distribution_plan_{self.user_id}.xlsx'
+            results['last_updated'] = pd.Timestamp.now()
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            results.to_excel(output_path, index=False, engine='openpyxl')
+            print(f"Updated distribution plan for user {self.user_id}")
         
         return results
 

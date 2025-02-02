@@ -1,7 +1,7 @@
 import { logout } from './auth.js';
 
 const API_BASE = window.location.hostname === 'localhost' 
-    ? 'http://localhost:5001' 
+    ? 'http://localhost:5002'  // Changed to match Flask server port
     : 'https://blueshacksByteBite.onrender.com';
 
 const debounce = (func, wait) => {
@@ -68,12 +68,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Add this function after fetchInventory
     const fetchDistributionPlan = async () => {
         try {
-            const response = await fetch(`${API_BASE}/api/predict`, {
+            console.log('Fetching from:', `${API_BASE}/predict`); // Debug log
+            const response = await fetch(`${API_BASE}/predict`, { // Remove /api/ prefix
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
-                }
+                },
+                body: JSON.stringify({ user_id: localStorage.getItem('userId') }) // Add user_id
             });
             
             if (!response.ok) {
@@ -88,6 +90,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         } catch (error) {
             console.error('Error fetching distribution plan:', error);
+            // Show user-friendly error message
+            const tableBody = document.getElementById('distribution-plan-body');
+            tableBody.innerHTML = `<tr><td colspan="5">Error loading distribution plan. Please try again.</td></tr>`;
         }
     };
 
@@ -95,6 +100,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const tableBody = document.getElementById('distribution-plan-body');
         tableBody.innerHTML = '';
         
+        // distributionPlan is already limited to 10 items from the backend
         distributionPlan.forEach(item => {
             const row = document.createElement('tr');
             row.innerHTML = `
@@ -106,6 +112,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             `;
             tableBody.appendChild(row);
         });
+
+        if (distributionPlan.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="5">No items in distribution plan</td>';
+            tableBody.appendChild(row);
+        }
     };
 
     // Update the inventory table row creation
