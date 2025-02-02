@@ -25,10 +25,16 @@
             <table id="inventory-table">
                 <thead>
                     <tr>
-                        <th>Food Type</th>
-                        <th>Quantity</th>
+                        <th>Food Item</th>
+                        <th>Type of Food</th>
+                        <th>Quantity Available</th>
                         <th>Expiration Date</th>
-                        <th>Nutritional Information</th>
+                        <th>Days Until Expiry</th>
+                        <th>Calories/Serving</th>
+                        <th>Sugars/Serving</th>
+                        <th>Weekly Customers</th>
+                        <th>Nutritional Ratio</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="inventory-body">
@@ -42,13 +48,30 @@
             <h2>Add New Stock</h2>
             <form id="add-stock-form">
                 <div class="autocomplete-container">
-                    <input type="text" id="food-type" placeholder="Food Type" required>
+                    <input type="text" id="food-type" placeholder="Food Item Name" required>
                     <div id="suggestions-list" class="suggestions"></div>
                 </div>
+                <select id="food-category" required>
+                    <option value="">Select Food Category</option>
+                    <option value="Snacks">Snacks</option>
+                    <option value="Protein">Protein</option>
+                    <option value="Vegetables">Vegetables</option>
+                    <option value="Grain">Grain</option>
+                    <option value="Dairy">Dairy</option>
+                    <option value="Canned Goods">Canned Goods</option>
+                </select>
                 <input type="number" id="quantity" placeholder="Quantity" required>
                 <input type="date" id="expiration-date" required>
                 <button type="submit">Add Stock</button>
             </form>
+            <div class="weekly-customers-container">
+                <h3>Weekly Customer Count</h3>
+                <div class="form-group">
+                    <label for="weekly-customers">Number of Weekly Customers:</label>
+                    <input type="number" id="weekly-customers" min="0" value="100">
+                    <button id="update-customers" class="btn">Update</button>
+                </div>
+            </div>
         </section>
 
         <!-- Distribution Plan Section -->
@@ -71,6 +94,7 @@
         </section>
     </div>
 
+    <script type="module" src="js/auth.js"></script>
     <script type="module" src="js/dashboard.js"></script>
 </body>
 </html>

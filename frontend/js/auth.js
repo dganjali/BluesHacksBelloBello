@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_BASE = window.location.hostname === 'localhost' 
+    ? 'http://localhost:5001' 
+    : 'https://blueshacksbellobello.onrender.com';
+
 const TOKEN_KEY = 'token';
 const USERNAME_KEY = 'username';
 

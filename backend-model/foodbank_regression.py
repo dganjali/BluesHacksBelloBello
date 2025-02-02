@@ -4,14 +4,88 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from datetime import datetime
+import os
 import warnings
 warnings.filterwarnings('ignore')
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
 
 class FoodBankDatabase:
-    def __init__(self, excel_path):
-        """Initialize database connection with Excel file."""
-        self.excel_path = excel_path
+    def __init__(self, user_id):
+        """Initialize database for specific user."""
+        self.user_id = user_id
+        self.excel_path = f'backend-model/user_data/inventory_{user_id}.xlsx'
+        self.ensure_user_directory()
         
+    def ensure_user_directory(self):
+        """Create user data directory and initialize Excel file if it doesn't exist."""
+        directory = 'backend-model/user_data'
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        
+        if not os.path.exists(self.excel_path):
+            # Create empty DataFrame with required columns
+            df = pd.DataFrame(columns=[
+                'food_item',
+                'food_type',
+                'current_quantity',
+                'expiration_date',
+                'days_until_expiry',
+                'calories',
+                'sugars',
+                'nutritional_ratio',
+                'weekly_customers'
+            ])
+            # Save empty DataFrame
+            df.to_excel(self.excel_path, index=False)
+            print(f"Created new inventory file for user {self.user_id}")
+    
+    def add_inventory_item(self, item_data):
+        """Add new inventory item to user's Excel file."""
+        try:
+            # Create file if it doesn't exist
+            self.ensure_user_directory()
+            
+            # Read existing data or create new DataFrame
+            try:
+                df = pd.read_excel(self.excel_path)
+            except:
+                df = pd.DataFrame(columns=[
+                    'food_item',
+                    'food_type',
+                    'current_quantity',
+                    'expiration_date',
+                    'days_until_expiry',
+                    'calories',
+                    'sugars',
+                    'nutritional_ratio',
+                    'weekly_customers'
+                ])
+            
+            # Prepare new row
+            new_row = {
+                'food_item': item_data['type'],
+                'food_type': item_data['category'],
+                'current_quantity': item_data['quantity'],
+                'expiration_date': item_data['expiration_date'],
+                'days_until_expiry': (pd.to_datetime(item_data['expiration_date']) - pd.Timestamp.now()).days,
+                'calories': item_data['nutritional_value']['calories'],
+                'sugars': item_data['nutritional_value']['sugars'],
+                'nutritional_ratio': item_data['nutritional_value']['calories'] / (item_data['nutritional_value']['sugars'] + 1),
+                'weekly_customers': 100  # Default value
+            }
+            
+            # Append new row
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            
+            # Save updated DataFrame
+            df.to_excel(self.excel_path, index=False)
+            return True
+        except Exception as e:
+            print(f"Error adding inventory item: {str(e)}")
+            return False
+
     def load_data(self):
         """Load and preprocess data from Excel file."""
         try:
@@ -173,11 +247,45 @@ class FoodBankDistributionModel:
         
         return results
 
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        data = request.json
+        user_id = data.get('user_id')
+        
+        # Initialize database for user
+        db = FoodBankDatabase(user_id)
+        
+        # Load user's inventory data
+        df = db.load_data()
+        
+        if df.empty:
+            return jsonify({
+                'success': True,
+                'distribution_plan': []
+            })
+        
+        # Get predictions
+        model = FoodBankDistributionModel()
+        model.train(df)
+        distribution_plan = model.get_distribution_plan(df)
+        
+        response = {
+            'success': True,
+            'distribution_plan': distribution_plan[['food_item', 'food_type', 
+                'days_until_expiry', 'current_quantity', 'recommended_quantity', 
+                'priority_score', 'rank']].to_dict('records')
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Example usage
 def main():
     # Initialize database connection
-    excel_path = "foodbank_dataset.xlsx" 
-    db = FoodBankDatabase(excel_path)
+    user_id = input("Enter user ID: ")
+    db = FoodBankDatabase(user_id)
                
     try:
         # Load data
@@ -217,3 +325,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+if __name__ == "__main__":
+    app.run(debug=True)

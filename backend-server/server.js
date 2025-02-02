@@ -38,16 +38,20 @@ mongoose.connect(MONGODB_URI, {
 
 // MongoDB schemas
 const StockSchema = new mongoose.Schema({
-  type: String,
+  type: String, // food item name
+  food_type: {
+    type: String,
+    enum: ['Snacks', 'Protein', 'Vegetables', 'Grain', 'Dairy', 'Canned Goods'],
+    required: true
+  },
   quantity: Number,
   expiration_date: Date,
+  days_until_expiry: Number,
+  weekly_customers: { type: Number, default: 100 },
   nutritional_value: {
     calories: Number,
-    total_fat: Number,
-    protein: Number,
-    carbohydrates: Number,
     sugars: Number,
-    sodium: Number
+    nutritional_ratio: Number
   },
   addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now }
@@ -233,7 +237,7 @@ app.get('/api/inventory', verifyToken, async (req, res) => {
 
 app.post('/api/inventory/add', verifyToken, async (req, res) => {
   try {
-    const { type, quantity, expiration_date } = req.body;
+    const { type, category, quantity, expiration_date } = req.body;
     
     const nutritionalValue = await getNutritionalInfo(type);
     if (!nutritionalValue) {
@@ -242,6 +246,7 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
 
     const newItem = new Stock({
       type,
+      category,
       quantity,
       expiration_date,
       nutritional_value: nutritionalValue,
@@ -249,8 +254,30 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
     });
 
     await newItem.save();
+
+    // Update user's Excel file
+    const pythonProcess = spawn('python', [
+      path.join(__dirname, '../backend-model/api.py'),
+      'add_item',
+      JSON.stringify({
+        user_id: req.user.id,
+        item_data: {
+          type,
+          category,
+          quantity,
+          expiration_date,
+          nutritional_value: nutritionalValue
+        }
+      })
+    ]);
+
+    pythonProcess.stderr.on('data', (data) => {
+      console.error(`Python Error: ${data}`);
+    });
+
     res.json({ success: true, newItem });
   } catch (error) {
+    console.error('Error adding inventory:', error);
     res.status(500).json({ error: 'Failed to add item to inventory' });
   }
 });
@@ -274,12 +301,17 @@ app.delete('/api/inventory/delete/:id', verifyToken, async (req, res) => {
 
 app.post('/api/predict', verifyToken, async (req, res) => {
     try {
-        const inventoryData = await Stock.find().sort({ createdAt: -1 });
+        const userId = req.user.id;
+        const inventoryData = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
         
-        // Spawn Python process
+        // Spawn Python process with user ID
         const pythonProcess = spawn('python', [
             path.join(__dirname, '../backend-model/api.py'),
-            JSON.stringify(inventoryData)
+            'predict',
+            JSON.stringify({
+                user_id: userId,
+                inventory_data: inventoryData
+            })
         ]);
 
         let result = '';

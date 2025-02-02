@@ -106,25 +106,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Update the inventory table row creation
     const createInventoryRow = (item) => {
-        let nutritionalInfo = "N/A";
-        if (item.nutritional_value) {
-            const nv = item.nutritional_value;
-            nutritionalInfo = `
-                Calories: ${nv.calories} kcal<br/>
-                Fat: ${nv.total_fat} g<br/>
-                Protein: ${nv.protein} g<br/>
-                Carbs: ${nv.carbohydrates} g<br/>
-                Sugars: ${nv.sugars} g<br/>
-                Sodium: ${nv.sodium} mg
-            `;
-        }
-
+        const daysUntilExpiry = Math.ceil((new Date(item.expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
+        const nutritionalRatio = item.nutritional_value.calories / (item.nutritional_value.sugars + 1);
+        
         const row = document.createElement("tr");
         row.innerHTML = `
             <td>${item.type}</td>
+            <td>${item.food_type}</td>
             <td>${item.quantity}</td>
             <td>${new Date(item.expiration_date).toLocaleDateString()}</td>
-            <td>${nutritionalInfo}</td>
+            <td>${daysUntilExpiry}</td>
+            <td>${item.nutritional_value.calories}</td>
+            <td>${item.nutritional_value.sugars}</td>
+            <td>${item.weekly_customers}</td>
+            <td>${nutritionalRatio.toFixed(2)}</td>
             <td>
                 <button class="btn-delete" onclick="deleteItem('${item._id}')">Delete</button>
             </td>
@@ -155,15 +150,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     };
 
-    // Add stock form handler
+    // Update the add stock form handler
     addStockForm.addEventListener("submit", async (e) => {
         e.preventDefault();
 
         const type = foodTypeInput.value;
+        const category = document.getElementById("food-category").value;
         const quantity = document.getElementById("quantity").value;
         const expiration_date = document.getElementById("expiration-date").value;
 
-        if (!type || !quantity || !expiration_date) {
+        if (!type || !category || !quantity || !expiration_date) {
             alert("Please fill in all fields");
             return;
         }
@@ -177,6 +173,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 },
                 body: JSON.stringify({ 
                     type, 
+                    category,
                     quantity: Number(quantity), 
                     expiration_date 
                 }),
@@ -259,4 +256,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Initial fetch of inventory
     fetchInventory();
+
+    // Add weekly customers update handler
+    document.getElementById('update-customers').addEventListener('click', async () => {
+        const weeklyCustomers = document.getElementById('weekly-customers').value;
+        try {
+            const response = await fetch(`${API_BASE}/api/inventory/update-customers`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ weekly_customers: Number(weeklyCustomers) })
+            });
+            
+            if (response.ok) {
+                fetchInventory(); // Refresh inventory
+            } else {
+                alert('Failed to update weekly customers');
+            }
+        } catch (error) {
+            console.error('Error updating weekly customers:', error);
+        }
+    });
 });

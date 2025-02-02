@@ -3,55 +3,39 @@ import sys
 import json
 from datetime import datetime
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor
+from foodbank_regression import FoodBankDatabase, FoodBankDistributionModel
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-
-class FoodBankDistributionModel:
-    def __init__(self):
-        self.model = RandomForestRegressor(n_estimators=100, random_state=42)
-        self.scaler = StandardScaler()
-        
-    def train(self, df):
-        features = ['days_until_expiry', 'current_quantity', 
-                   'calories', 'sugars', 'nutritional_ratio']
-        X = self.scaler.fit_transform(df[features])
-        y = df['current_quantity']
-        self.model.fit(X, y)
-        
-    def get_distribution_plan(self, df):
-        features = ['days_until_expiry', 'current_quantity', 
-                   'calories', 'sugars', 'nutritional_ratio']
-        X = self.scaler.transform(df[features])
-        df['recommended_quantity'] = self.model.predict(X)
-        df['priority_score'] = (
-            df['days_until_expiry'] * 0.3 +
-            df['nutritional_ratio'] * 0.4 +
-            (df['current_quantity'] / df['recommended_quantity']) * 0.3
-        )
-        df['rank'] = df['priority_score'].rank(ascending=False)
-        return df
+import os
 
 app = Flask(__name__)
 CORS(app)
 model = FoodBankDistributionModel()
 
+# Add health check endpoint
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy'})
+
+def handle_add_item(data):
+    """Handle adding new item to user's inventory."""
+    try:
+        user_id = data['user_id']
+        item_data = data['item_data']
+        
+        db = FoodBankDatabase(user_id)
+        success = db.add_inventory_item(item_data)
+        
+        return {'success': success}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        inventory_data = request.json
-        df = pd.DataFrame(inventory_data)
-        
-        # Prepare data
-        df['food_item'] = df['type']
-        df['food_type'] = df['type']
-        df['days_until_expiry'] = (pd.to_datetime(df['expiration_date']) - pd.Timestamp.now()).dt.days
-        df['current_quantity'] = df['quantity']
-        df['calories'] = df.apply(lambda x: x['nutritional_value']['calories'], axis=1)
-        df['sugars'] = df.apply(lambda x: x['nutritional_value']['sugars'], axis=1)
-        df['nutritional_ratio'] = df['calories'] / (df['sugars'] + 1)
-        df['weekly_customers'] = 100
+        user_id = request.json.get('user_id')
+        db = FoodBankDatabase(user_id)
+        df = db.load_data()
         
         # Get predictions
         model.train(df)
@@ -65,25 +49,19 @@ def predict():
         }
         
         return jsonify(response)
-        
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-if len(sys.argv) > 1:
-    # Command line mode
-    try:
-        inventory_data = json.loads(sys.argv[1])
-        df = pd.DataFrame(inventory_data)
-        model.train(df)
-        distribution_plan = model.get_distribution_plan(df)
-        print(json.dumps({
-            'success': True,
-            'distribution_plan': distribution_plan.to_dict('records')
-        }))
-        sys.exit(0)
-    except Exception as e:
-        print(json.dumps({'success': False, 'error': str(e)}))
-        sys.exit(1)
-else:
-    # Server mode
-    app.run(port=5002)
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        if command == 'add_item':
+            data = json.loads(sys.argv[2])
+            result = handle_add_item(data)
+            print(json.dumps(result))
+            sys.exit(0 if result['success'] else 1)
+    else:
+        # Get port from environment variable for Render
+        port = int(os.environ.get('PORT', 5002))
+        # Allow any host to connect and use production mode
+        app.run(host='0.0.0.0', port=port)
