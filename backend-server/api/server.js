@@ -8,7 +8,7 @@ const path = require('path');
 const cors = require('cors');
 const axios = require('axios');
 const debounce = require('debounce-promise');
-const User = require('./models/User');
+const User = require('../models/User');
 
 const app = express();
 app.use(cors());
