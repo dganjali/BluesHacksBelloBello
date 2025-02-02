@@ -21,7 +21,7 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Environment variables
 const PORT = process.env.PORT || 5001;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/foodbank';
+const MONGODB_URI = process.env.MONGODB_URI; // Always use Atlas cluster
 const JWT_SECRET = process.env.JWT_SECRET;
 const NUTRITIONIX_APP_ID = process.env.NUTRITIONIX_APP_ID;
 const NUTRITIONIX_API_KEY = process.env.NUTRITIONIX_API_KEY;
@@ -32,9 +32,11 @@ mongoose.connect(MONGODB_URI, {
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 30000, // Increased timeout
     retryWrites: true,
-    w: 'majority'
+    w: 'majority',
+    ssl: true,
+    authSource: 'admin'
 }).then(() => {
-    console.log('Connected to MongoDB');
+    console.log('Connected to MongoDB Atlas');
 }).catch((err) => {
     console.error('MongoDB connection error:', err);
 });
