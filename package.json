@@ -1,19 +1,16 @@
 {
-  "name": "api",
+  "name": "bello-bello",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "backend-server/server.js",
   "engines": {
-    "node": "22.x"
+    "node": ">=18.x"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "vercel-build": "echo hello"
+    "start": "node backend-server/server.js",
+    "dev": "nodemon backend-server/server.js",
+    "build": "echo 'No build step required'"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "axios": "^1.6.7",
     "bcrypt": "^5.1.1",
@@ -31,5 +28,5 @@
   "devDependencies": {
     "nodemon": "^3.0.3"
   },
-  "description": "API for BelloBello Food Bank Inventory Management System"
+  "description": "BelloBello Food Bank Inventory Management System"
 }
