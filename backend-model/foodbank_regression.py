@@ -13,19 +13,18 @@ app = Flask(__name__)
 
 class FoodBankDatabase:
     def __init__(self, user_id):
-        """Initialize database for specific user."""
+        # start the database
         self.user_id = user_id
         self.excel_path = f'backend-model/user_data/inventory_{user_id}.xlsx'
         self.ensure_user_directory()
         
     def ensure_user_directory(self):
-        """Create user data directory and initialize Excel file if it doesn't exist."""
         directory = 'backend-model/user_data'
         if not os.path.exists(directory):
             os.makedirs(directory)
         
         if not os.path.exists(self.excel_path):
-            # Create empty DataFrame with required columns
+            # excel columns (case-sensitive!!)
             df = pd.DataFrame(columns=[
                 'food_item',
                 'food_type',
@@ -37,17 +36,17 @@ class FoodBankDatabase:
                 'nutritional_ratio',
                 'weekly_customers'
             ])
-            # Save empty DataFrame
+            # save empty data frane
             df.to_excel(self.excel_path, index=False)
             print(f"Created new inventory file for user {self.user_id}")
     
     def add_inventory_item(self, item_data):
-        """Add new inventory item to user's Excel file."""
+        
         try:
-            # Create file if it doesn't exist
+           
             self.ensure_user_directory()
             
-            # Read existing data or create new DataFrame
+            # take info from data frame and then map it as well
             try:
                 df = pd.read_excel(self.excel_path)
             except:
@@ -63,7 +62,7 @@ class FoodBankDatabase:
                     'weekly_customers'
                 ])
             
-            # Prepare new row
+            
             new_row = {
                 'food_item': item_data['type'],
                 'food_type': item_data['category'],
@@ -73,13 +72,13 @@ class FoodBankDatabase:
                 'calories': item_data['nutritional_value']['calories'],
                 'sugars': item_data['nutritional_value']['sugars'],
                 'nutritional_ratio': item_data['nutritional_value']['calories'] / (item_data['nutritional_value']['sugars'] + 1),
-                'weekly_customers': 100  # Default value
+                'weekly_customers': 100  # base value (according to experiences, foodbank size etc)
             }
             
-            # Append new row
+            # append
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
             
-            # Save updated DataFrame
+            # save
             df.to_excel(self.excel_path, index=False)
             return True
         except Exception as e:
@@ -87,12 +86,12 @@ class FoodBankDatabase:
             return False
 
     def load_data(self):
-        """Load and preprocess data from Excel file."""
+        
         try:
-            # Read Excel file
+            # read the excel rows
             df = pd.read_excel(self.excel_path)
             
-            # Rename columns to match expected format (if needed)
+            # change columns names so they are more formal 
             column_mapping = {
                 'food item': 'food_item',
                 'expiration': 'expiration_date',
@@ -107,7 +106,7 @@ class FoodBankDatabase:
             
             df = df.rename(columns=column_mapping)
             
-            # Validate required columns
+            # handle an error if column number isnt precise
             required_columns = set(column_mapping.values())
             missing_columns = required_columns - set(df.columns)
             
@@ -130,13 +129,11 @@ class FoodBankDistributionModel:
         )
         
     def preprocess_data(self, df):
-        """Preprocess the input data."""
+        
         processed_df = df.copy()
+
         
-        # Use existing days until expiration from database
-        # No need to calculate as it's already provided
-        
-        # Encode categorical variables
+        # label the variables
         categorical_columns = ['food_type', 'food_item']
         for col in categorical_columns:
             if col not in self.label_encoders:
@@ -145,7 +142,7 @@ class FoodBankDistributionModel:
             else:
                 processed_df[col] = self.label_encoders[col].transform(processed_df[col])
         
-        # Prepare features
+        # set up the features that we need
         feature_columns = [
             'days_until_expiry',
             'food_type',
@@ -167,7 +164,7 @@ class FoodBankDistributionModel:
         return X
         
     def calculate_priority_scores(self, df):
-        """Calculate priority scores based on business rules.
+        """Calculation Note!* Based off industry customs and convention:
         
         The weightage percentage distribuition for variable types:
 
@@ -179,49 +176,49 @@ class FoodBankDistributionModel:
         """
         scores = np.zeros(len(df))
         
-        # Higher priority for items closer to expiration
+        # higher priority for items closer to expiration
         scores += 1 / (df['days_until_expiry'] + 1) * 40
         
-        # Priority based on nutritional ratio
+        # priority based on nutritional ratio
         scores += df['nutritional_ratio'] * 25
         
-        # Priority based on current quantity vs weekly customers
+        # priority based on current quantity vs weekly customers
         scores += (df['current_quantity'] / df['weekly_customers']) * 35
         
         return scores
         
     def calculate_recommended_quantities(self, df):
-        """Calculate recommended quantities based on business rules."""
-        # Base calculation on current quantity and weekly customers
+        """ As mentioned, calculate recommended quantities based on relevant customs and rules."""
+        # ratio between current quantity and weekly customers
         base_quantity = df['current_quantity'] / df['weekly_customers']
         
-        # Adjust for expiration
+        # using the expiry weight to adjust
         expiry_factor = 1 + (1 / (df['days_until_expiry'] + 1))
         
-        # Adjust for nutritional value
+        # using the nutritional weight to adjust 
         nutrition_factor = 1 + (df['nutritional_ratio'] / df['nutritional_ratio'].max())
         
-        # Calculate final recommended quantities
+        # multiply all the ratios for final quantity
         quantities = base_quantity * expiry_factor * nutrition_factor
         
-        # Ensure minimum nutritional requirements
-        quantities = np.maximum(quantities, 1)  # Minimum 1 unit per person
+        # also, each person should get at least 1 unit
+        quantities = np.maximum(quantities, 1)  
         
         return quantities
         
     def train(self, df):
-        """Train the model on the provided data."""
+       
         X = self.preprocess_data(df)
         
-        # Target variables: priority_score and recommended_quantity
+        # need to target priority_score and recommended_quantity, its a two-dimensional output to the regressional model
         y_priority = self.calculate_priority_scores(df)
         y_quantity = self.calculate_recommended_quantities(df)
         
-        # Train models
+        # fit and train
         self.model.fit(X, np.column_stack((y_priority, y_quantity)))
     
     def predict(self, df):
-        """Make predictions for new data."""
+        
         X = self.preprocess_data(df)
         predictions = self.model.predict(X)
         
@@ -231,32 +228,33 @@ class FoodBankDistributionModel:
         }
         
     def get_distribution_plan(self, df):
-        """Generate a complete distribution plan."""
+        # generating a distriubiton plan to be loaded to another excel here
         predictions = self.predict(df)
         
-        # Create results DataFrame
+        # create a new dataframe, but for results
         results = df.copy()
         results['priority_score'] = predictions['priority_scores']
         results['recommended_quantity'] = predictions['recommended_quantities']
         
-        # Sort by priority score
+        # sort via priority score
         results = results.sort_values('priority_score', ascending=False)
         
-        # Add rankings
+        # append the ranks
         results['rank'] = range(1, len(results) + 1)
         
         return results
 
 @app.route('/predict', methods=['POST'])
+
 def predict():
     try:
         data = request.json
         user_id = data.get('user_id')
         
-        # Initialize database for user
+        # initialize db
         db = FoodBankDatabase(user_id)
         
-        # Load user's inventory data
+        # load any inventory data
         df = db.load_data()
         
         if df.empty:
@@ -265,7 +263,7 @@ def predict():
                 'distribution_plan': []
             })
         
-        # Get predictions
+        #  now predict
         model = FoodBankDistributionModel()
         model.train(df)
         distribution_plan = model.get_distribution_plan(df)
@@ -281,17 +279,18 @@ def predict():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Example usage
+# sample usage for the 1000 row foodbank_dataset.xlsx training file (simulate inventory data)
+
 def main():
-    # Initialize database connection
+    
     user_id = input("Enter user ID: ")
     db = FoodBankDatabase(user_id)
                
     try:
-        # Load data
+        # load again
         data = db.load_data()
         
-        # Number of rows
+        # gauge the size of the spreadsheet
         num_rows = data.shape[0]
         
         print()
@@ -303,20 +302,20 @@ def main():
             print("Invalid input. Please enter a valid integer.")
             return
         
-        # Initialize and train model
+        # run the training model
         model = FoodBankDistributionModel()
         model.train(data)
         
-        # Get distribution plan
+        # output a new excel, disribution_plan.xlsx
         distribution_plan = model.get_distribution_plan(data)
         
-        # Display results
+        # display
         print(f"\nTop {num_ranks} Priority Items:")
         print(distribution_plan[['food_item', 'food_type', 'days_until_expiry', 
                                'current_quantity', 'recommended_quantity', 
                                'priority_score', 'rank']].head(num_ranks))
         
-        # Save results to Excel
+        # save!
         distribution_plan.to_excel("distribution_plan.xlsx", index=False)
         print("\nFull distribution plan saved to 'distribution_plan.xlsx'")
         
