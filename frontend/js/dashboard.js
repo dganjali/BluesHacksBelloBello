@@ -17,20 +17,25 @@ const debounce = (func, wait) => {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+    // Get both token and username from localStorage
     const token = localStorage.getItem("token");
     const username = localStorage.getItem("username");
-    const inventoryBody = document.getElementById("inventory-body");
-    const addStockForm = document.getElementById("add-stock-form");
-    const foodTypeInput = document.getElementById("food-type");
-    const suggestionsList = document.getElementById("suggestions-list");
-
+    
     if (!token) {
         window.location.href = "signin.html";
         return;
     }
 
-    // Display username
-    document.getElementById("username-display").textContent = username;
+    // Update username display
+    const usernameDisplay = document.getElementById("username-display");
+    if (usernameDisplay && username) {
+        usernameDisplay.textContent = username;
+    }
+
+    const inventoryBody = document.getElementById("inventory-body");
+    const addStockForm = document.getElementById("add-stock-form");
+    const foodTypeInput = document.getElementById("food-type");
+    const suggestionsList = document.getElementById("suggestions-list");
 
     // Logout functionality
     document.getElementById("logoutButton").addEventListener("click", logout);
@@ -158,6 +163,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         const quantity = document.getElementById("quantity").value;
         const expiration_date = document.getElementById("expiration-date").value;
 
+        if (!type || !quantity || !expiration_date) {
+            alert("Please fill in all fields");
+            return;
+        }
+
         try {
             const response = await fetch(`${API_BASE}/api/inventory/add`, {
                 method: "POST",
@@ -165,19 +175,32 @@ document.addEventListener("DOMContentLoaded", async () => {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({ type, quantity, expiration_date }),
+                body: JSON.stringify({ 
+                    type, 
+                    quantity: Number(quantity), 
+                    expiration_date 
+                }),
             });
 
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to add stock');
+            }
+
             const data = await response.json();
-            if (response.ok) {
-                fetchInventory();
+            if (data.success) {
+                const row = createInventoryRow(data.newItem);
+                inventoryBody.insertBefore(row, inventoryBody.firstChild);
                 addStockForm.reset();
+                
+                // Refresh inventory to update distribution plan
+                await fetchInventory();
             } else {
                 alert(data.error || "Failed to add stock");
             }
         } catch (error) {
             console.error("Error adding stock:", error);
-            alert("An error occurred while adding stock");
+            alert(error.message || "An error occurred while adding stock");
         }
     });
 
@@ -195,10 +218,14 @@ document.addEventListener("DOMContentLoaded", async () => {
                     'Authorization': `Bearer ${token}`
                 }
             });
+            
+            if (!response.ok) throw new Error('Failed to fetch suggestions');
+            
             const suggestions = await response.json();
-
+            
+            suggestionsList.innerHTML = '';
             if (suggestions.length > 0) {
-                suggestionsList.innerHTML = '';
+                suggestionsList.classList.add('active');
                 suggestions.forEach(suggestion => {
                     const div = document.createElement('div');
                     div.className = 'suggestion-item';
@@ -210,7 +237,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                     });
                     suggestionsList.appendChild(div);
                 });
-                suggestionsList.classList.add('active');
             } else {
                 suggestionsList.classList.remove('active');
             }
