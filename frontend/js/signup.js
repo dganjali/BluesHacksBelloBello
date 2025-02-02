@@ -9,7 +9,7 @@ document.getElementById('signup-form').addEventListener('submit', async (e) => {
     // Define API URL based on environment
     const API_URL = window.location.hostname === 'localhost' 
         ? 'http://localhost:5001' 
-        : 'https://blueshacksbellobello.onrender.com';
+        : 'https://blueshacksByteBite.onrender.com';
 
     try {
         const response = await fetch(`${API_URL}/api/signup`, {

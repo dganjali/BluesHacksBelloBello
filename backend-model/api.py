@@ -51,9 +51,12 @@ def predict():
             model.train(df)
             distribution_plan = model.get_distribution_plan(df)
             
+            # Get top 10 items by priority score
+            top_10_plan = distribution_plan.nlargest(10, 'priority_score')
+            
             response = {
                 'success': True,
-                'distribution_plan': distribution_plan[['food_item', 'food_type', 
+                'distribution_plan': top_10_plan[['food_item', 'food_type', 
                     'days_until_expiry', 'current_quantity', 'recommended_quantity', 
                     'priority_score', 'rank']].to_dict('records')
             }
@@ -99,9 +102,12 @@ if __name__ == '__main__':
                 model.train(df)
                 distribution_plan = model.get_distribution_plan(df)
                 
+                # Get top 10 items by priority score
+                top_10_plan = distribution_plan.nlargest(10, 'priority_score')
+                
                 response = {
                     'success': True,
-                    'distribution_plan': distribution_plan[['food_item', 'food_type', 
+                    'distribution_plan': top_10_plan[['food_item', 'food_type', 
                         'days_until_expiry', 'current_quantity', 'recommended_quantity', 
                         'priority_score', 'rank']].to_dict('records')
                 }

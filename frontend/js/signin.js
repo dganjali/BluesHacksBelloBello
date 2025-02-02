@@ -1,6 +1,6 @@
 const API_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:5001' 
-    : 'https://blueshacksbellobello.onrender.com';
+    : 'https://blueshacksByteBite.onrender.com';
 
 document.addEventListener("DOMContentLoaded", () => {
   // Clear any stored token and username on every load of the sign-in page

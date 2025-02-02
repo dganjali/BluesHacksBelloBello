@@ -27,5 +27,5 @@
   "devDependencies": {
     "nodemon": "^3.0.3"
   },
-  "description": "BelloBello Food Bank Inventory Management System"
+  "description": "ByteBite Food Bank Inventory Management System"
 }

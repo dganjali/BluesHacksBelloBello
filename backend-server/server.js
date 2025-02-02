@@ -13,7 +13,7 @@ const { spawn } = require('child_process');
 
 const app = express();
 app.use(cors({
-  origin: ['http://localhost:5001', 'https://blueshacksbellobello.onrender.com'],
+  origin: ['http://localhost:5001', 'https://blueshacksByteBite.onrender.com'],
   credentials: true
 }));
 app.use(bodyParser.json());
@@ -262,10 +262,8 @@ app.get('/api/search', verifyToken, async (req, res) => {
 
 app.get('/api/inventory', verifyToken, async (req, res) => {
   try {
-    // Remove addedBy filter to show all items, limit to 10 most recent
-    const inventory = await Stock.find()
-      .sort({ createdAt: -1 })
-      .limit(10); // Show top 10 items
+    const inventory = await Stock.find({ addedBy: req.user.id })
+      .sort({ createdAt: -1 });
     res.json(inventory);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch inventory' });
@@ -281,76 +279,24 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Could not fetch nutritional information' });
     }
 
-    // Calculate days until expiry and nutritional ratio
-    const daysUntilExpiry = Math.ceil((new Date(expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
-    const nutritionalRatio = nutritionalValue.calories / (nutritionalValue.sugars + 1);
-
     const newItem = new Stock({
       type,
       food_type: category,
       quantity: Number(quantity),
       expiration_date,
-      days_until_expiry: daysUntilExpiry,
+      addedBy: req.user.id,  // Ensure user ID is added
       nutritional_value: {
-        ...nutritionalValue,
-        nutritional_ratio: nutritionalRatio
-      },
-      addedBy: req.user.id
-    });
-
-    await newItem.save();
-
-    // Update Python model's Excel file with properly formatted data
-    const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
-    const pythonProcess = spawn(pythonPath, [
-      path.resolve(__dirname, '../backend-model/api.py'),
-      'add_item',
-      JSON.stringify({
-        user_id: req.user.id,
-        item_data: {
-          type,
-          category,
-          quantity: Number(quantity),
-          expiration_date,
-          nutritional_value: {
-            calories: nutritionalValue.calories,
-            sugars: nutritionalValue.sugars
-          },
-          // Add formatted data for Excel
-          excel_data: {
-            food_item: type,
-            expiration: expiration_date,
-            days_until_expiration: daysUntilExpiry,
-            type_of_food: category,
-            quantity_available: Number(quantity),
-            calories_per_serving: nutritionalValue.calories,
-            sugars_per_serving: nutritionalValue.sugars,
-            customers_that_week: 100, // Default value
-            nutritional_ratio: nutritionalRatio
-          }
-        }
-      })
-    ]);
-
-    let pythonError = '';
-    pythonProcess.stderr.on('data', (data) => {
-      pythonError += data.toString();
-      console.error('Python Error:', data.toString());
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        console.error('Python process error:', pythonError);
+        calories: nutritionalValue.calories,
+        sugars: nutritionalValue.sugars,
+        nutritional_ratio: nutritionalValue.calories / (nutritionalValue.sugars + 1)
       }
     });
 
+    await newItem.save();
     res.json({ success: true, newItem });
   } catch (error) {
     console.error('Error adding inventory:', error);
-    res.status(500).json({ 
-      error: 'Failed to add item to inventory',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to add item' });
   }
 });
 
@@ -374,10 +320,10 @@ app.delete('/api/inventory/delete/:id', verifyToken, async (req, res) => {
 app.post('/api/predict', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    // Remove addedBy filter to process all items
-    const inventory = await Stock.find()
+    // Get all inventory items for this user
+    const inventory = await Stock.find({ addedBy: userId })
       .sort({ createdAt: -1 })
-      .limit(10); // Process top 10 items
+      .lean(); // Use lean() for better performance
 
     if (!inventory.length) {
       return res.json({
@@ -386,6 +332,7 @@ app.post('/api/predict', verifyToken, async (req, res) => {
       });
     }
 
+    // Format all inventory items
     const formattedInventory = inventory.map(item => ({
       food_item: item.type,
       food_type: item.food_type,
@@ -398,7 +345,7 @@ app.post('/api/predict', verifyToken, async (req, res) => {
       weekly_customers: item.weekly_customers || 100
     }));
 
-    // Use Promise to handle Python process
+    // Create unique data file for this user's prediction
     const predictionData = await new Promise((resolve, reject) => {
       const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
       const pythonProcess = spawn(pythonPath, [
@@ -406,7 +353,7 @@ app.post('/api/predict', verifyToken, async (req, res) => {
         'predict',
         JSON.stringify({
           user_id: userId,
-          inventory_data: formattedInventory
+          inventory_data: formattedInventory // Pass all inventory items
         })
       ]);
 
@@ -422,30 +369,35 @@ app.post('/api/predict', verifyToken, async (req, res) => {
         console.error('Python Error:', data.toString());
       });
 
-      pythonProcess.on('error', (error) => {
-        console.error('Python process error:', error);
-        reject(new Error(`Failed to start Python process: ${error.message}`));
-      });
-
       pythonProcess.on('close', (code) => {
         if (code !== 0) {
-          console.error('Python process failed:', pythonError);
-          reject(new Error(`Python process failed: ${pythonError}`));
+          reject(new Error(pythonError || 'Python process failed'));
           return;
         }
-
         try {
-          console.log('Raw Python output:', result);
-          resolve(JSON.parse(result.trim()));
+          const parsedResult = JSON.parse(result.trim());
+          if (!parsedResult.distribution_plan || !Array.isArray(parsedResult.distribution_plan)) {
+            reject(new Error('Invalid distribution plan format'));
+            return;
+          }
+          resolve(parsedResult);
         } catch (error) {
-          console.error('Failed to parse Python output:', error);
-          console.error('Raw output:', result);
+          console.error('Parse error:', error);
+          console.error('Raw result:', result);
           reject(new Error('Failed to parse prediction results'));
         }
       });
+
+      pythonProcess.on('error', (error) => {
+        reject(new Error(`Failed to start Python process: ${error.message}`));
+      });
     });
 
-    res.json(predictionData);
+    // Return the complete distribution plan
+    res.json({
+      success: true,
+      distribution_plan: predictionData.distribution_plan
+    });
 
   } catch (error) {
     console.error('Prediction error:', error);
@@ -494,7 +446,6 @@ app.get('/signup', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend', 'signup.html'));
 });
 
-// Protected routes
 app.get('/dashboard', verifyToken, (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend', 'dashboard.html'));
 });

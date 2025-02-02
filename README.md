@@ -1,7 +1,7 @@
-# BluesHacks2025-BelloBello
+# BluesHacks2025-ByteBite
 
 ## Project Overview
-BelloBello is an inventory management system designed to help food banks manage their stock efficiently. The system includes user authentication, inventory tracking, and integration with the Nutritionix API to fetch nutritional information.
+ByteBite is an inventory management system designed to help food banks manage their stock efficiently. The system includes user authentication, inventory tracking, and integration with the Nutritionix API to fetch nutritional information.
 
 ## Features
 1. **User Authentication**
