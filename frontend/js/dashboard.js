@@ -66,13 +66,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     // Add this function after fetchInventory
-    const fetchDistributionPlan = async (inventoryData) => {
+    const fetchDistributionPlan = async () => {
         try {
-            if (!inventoryData || inventoryData.length === 0) {
-                updateDistributionPlanTable([]); // Handle empty inventory
-                return;
-            }
-
             const response = await fetch(`${API_BASE}/api/predict`, {
                 method: 'POST',
                 headers: {
@@ -81,17 +76,18 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
             });
             
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const data = await response.json();
             if (data.success) {
                 updateDistributionPlanTable(data.distribution_plan);
             } else {
                 console.error('Failed to get distribution plan:', data.error);
-                // Show user-friendly error message
-                alert('Failed to generate distribution plan. Please try again later.');
             }
         } catch (error) {
             console.error('Error fetching distribution plan:', error);
-            alert('Error generating distribution plan. Please ensure you have items in your inventory.');
         }
     };
 
@@ -288,11 +284,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Add refresh distribution plan button handler
     document.getElementById('refresh-distribution').addEventListener('click', async () => {
+        const refreshButton = document.getElementById('refresh-distribution');
+        const originalText = refreshButton.textContent;
+        
         try {
-            const loadingText = 'Refreshing...';
-            const originalText = document.getElementById('refresh-distribution').textContent;
-            document.getElementById('refresh-distribution').textContent = loadingText;
-            document.getElementById('refresh-distribution').disabled = true;
+            // Disable button and show loading state
+            refreshButton.textContent = 'Refreshing...';
+            refreshButton.disabled = true;
 
             const response = await fetch(`${API_BASE}/api/predict`, {
                 method: 'POST',
@@ -302,20 +300,25 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
             });
             
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const data = await response.json();
             
             if (data.success) {
                 updateDistributionPlanTable(data.distribution_plan);
             } else {
                 console.error('Failed to refresh distribution plan:', data.error);
-                alert('Failed to refresh distribution plan: ' + data.error);
+                alert('Failed to refresh distribution plan: ' + (data.error || 'Unknown error'));
             }
         } catch (error) {
             console.error('Error refreshing distribution plan:', error);
-            alert('Error refreshing distribution plan');
+            alert('Error refreshing distribution plan. Please try again.');
         } finally {
-            document.getElementById('refresh-distribution').textContent = originalText;
-            document.getElementById('refresh-distribution').disabled = false;
+            // Restore button state
+            refreshButton.textContent = originalText;
+            refreshButton.disabled = false;
         }
     });
 });
