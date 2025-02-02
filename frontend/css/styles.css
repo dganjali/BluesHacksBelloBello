@@ -281,3 +281,16 @@ th, td {
     align-items: center;
     gap: 1rem;
 }
+
+#refresh-distribution {
+    margin-bottom: 20px;
+    background-color: #3498db;
+}
+
+#refresh-distribution:hover {
+    background-color: #2980b9;
+}
+
+#distribution-plan {
+    margin-top: 30px;
+}

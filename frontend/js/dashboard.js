@@ -277,4 +277,28 @@ document.addEventListener("DOMContentLoaded", async () => {
             console.error('Error updating weekly customers:', error);
         }
     });
+
+    // Add refresh distribution plan button handler
+    document.getElementById('refresh-distribution').addEventListener('click', async () => {
+        try {
+            const response = await fetch(`${API_BASE}/api/predict`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                updateDistributionPlanTable(data.distribution_plan);
+            } else {
+                console.error('Failed to refresh distribution plan:', data.error);
+                alert('Failed to refresh distribution plan');
+            }
+        } catch (error) {
+            console.error('Error refreshing distribution plan:', error);
+            alert('Error refreshing distribution plan');
+        }
+    });
 });

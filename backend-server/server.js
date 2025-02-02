@@ -297,8 +297,9 @@ app.post('/api/inventory/add', verifyToken, async (req, res) => {
     await newItem.save();
 
     // Update Python model's Excel file with properly formatted data
-    const pythonProcess = spawn('python3', [
-      path.join(__dirname, '../backend-model/api.py'),
+    const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
+    const pythonProcess = spawn(pythonPath, [
+      path.resolve(__dirname, '../backend-model/api.py'),
       'add_item',
       JSON.stringify({
         user_id: req.user.id,
@@ -371,12 +372,26 @@ app.post('/api/predict', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const inventory = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
 
-    const pythonProcess = spawn('python3', [  // Changed from 'python' to 'python3'
-      path.join(__dirname, '../backend-model/api.py'),
+    // Convert inventory data to the format expected by Python
+    const formattedInventory = inventory.map(item => ({
+      food_item: item.type,
+      food_type: item.food_type,
+      current_quantity: item.quantity,
+      expiration_date: item.expiration_date,
+      days_until_expiry: Math.ceil((new Date(item.expiration_date) - new Date()) / (1000 * 60 * 60 * 24)),
+      calories: item.nutritional_value.calories,
+      sugars: item.nutritional_value.sugars,
+      nutritional_ratio: item.nutritional_value.calories / (item.nutritional_value.sugars + 1),
+      weekly_customers: item.weekly_customers || 100
+    }));
+
+    const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
+    const pythonProcess = spawn(pythonPath, [
+      path.resolve(__dirname, '../backend-model/api.py'),
       'predict',
       JSON.stringify({
         user_id: userId,
-        inventory_data: inventory
+        inventory_data: formattedInventory
       })
     ]);
 
@@ -392,6 +407,15 @@ app.post('/api/predict', verifyToken, async (req, res) => {
       console.error('Python Error:', data.toString());
     });
 
+    pythonProcess.on('error', (error) => {
+      console.error('Failed to start Python process:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to start Python process',
+        details: error.message
+      });
+    });
+
     pythonProcess.on('close', (code) => {
       if (code !== 0) {
         return res.status(500).json({ 
@@ -404,6 +428,8 @@ app.post('/api/predict', verifyToken, async (req, res) => {
         const predictionData = JSON.parse(result);
         res.json(predictionData);
       } catch (error) {
+        console.error('Error parsing prediction data:', error);
+        console.error('Raw result:', result);
         res.status(500).json({ 
           success: false, 
           error: 'Failed to parse prediction results',
@@ -412,6 +438,7 @@ app.post('/api/predict', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Prediction error:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to get inventory data',
