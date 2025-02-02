@@ -28,12 +28,18 @@ const NUTRITIONIX_API_KEY = process.env.NUTRITIONIX_API_KEY;
 
 // MongoDB connection
 mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 30000, // Increased timeout
+    retryWrites: true,
+    w: 'majority',
+    ssl: true,
+    tlsAllowInvalidCertificates: false,
+    authSource: 'admin'
 }).then(() => {
-  console.log('Connected to MongoDB');
+    console.log('Connected to MongoDB');
 }).catch((err) => {
-  console.log('Error connecting to MongoDB:', err);
+    console.error('MongoDB connection error:', err);
 });
 
 // MongoDB schemas
