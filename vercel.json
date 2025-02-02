@@ -1,10 +1,9 @@
 {
-    "version": 2,
-    "functions": {
-      "backend-server/server.js": {
-        "memory": 1024,
-        "maxDuration": 10
-      }
+  "version": 2,
+  "functions": {
+    "backend-server/server.js": {
+      "memory": 1024,
+      "maxDuration": 10
     }
   }
-  
+}
