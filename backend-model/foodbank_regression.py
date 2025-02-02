@@ -124,8 +124,14 @@ class FoodBankDistributionModel:
         )
         
     def preprocess_data(self, df):
+        if df.empty:
+            raise ValueError("Empty dataset provided. Please add inventory items first.")
         
         processed_df = df.copy()
+        
+        # Ensure we have data before processing
+        if len(processed_df) == 0:
+            raise ValueError("No data available for processing")
 
         
         # label the variables
@@ -202,8 +208,14 @@ class FoodBankDistributionModel:
         return quantities
         
     def train(self, df):
-       
+        if df.empty:
+            raise ValueError("Empty dataset provided. Please add inventory items first.")
+        
         X = self.preprocess_data(df)
+        
+        # Ensure we have data before training
+        if len(X) == 0:
+            raise ValueError("No data available for training")
         
         # need to target priority_score and recommended_quantity, its a two-dimensional output to the regressional model
         y_priority = self.calculate_priority_scores(df)

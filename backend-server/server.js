@@ -261,7 +261,10 @@ app.get('/api/search', verifyToken, async (req, res) => {
 
 app.get('/api/inventory', verifyToken, async (req, res) => {
   try {
-    const inventory = await Stock.find().sort({ createdAt: -1 });
+    // Remove addedBy filter to show all items, limit to 10 most recent
+    const inventory = await Stock.find()
+      .sort({ createdAt: -1 })
+      .limit(10); // Show top 10 items
     res.json(inventory);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch inventory' });
@@ -370,7 +373,10 @@ app.delete('/api/inventory/delete/:id', verifyToken, async (req, res) => {
 app.post('/api/predict', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const inventory = await Stock.find({ addedBy: userId }).sort({ createdAt: -1 });
+    // Remove addedBy filter to process all items
+    const inventory = await Stock.find()
+      .sort({ createdAt: -1 })
+      .limit(10); // Process top 10 items
 
     if (!inventory.length) {
       return res.json({
@@ -391,51 +397,54 @@ app.post('/api/predict', verifyToken, async (req, res) => {
       weekly_customers: item.weekly_customers || 100
     }));
 
-    const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
-    const pythonProcess = spawn(pythonPath, [
-      path.resolve(__dirname, '../backend-model/api.py'),
-      'predict',
-      JSON.stringify({
-        user_id: userId,
-        inventory_data: formattedInventory
-      })
-    ]);
+    // Use Promise to handle Python process
+    const predictionData = await new Promise((resolve, reject) => {
+      const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
+      const pythonProcess = spawn(pythonPath, [
+        path.resolve(__dirname, '../backend-model/api.py'),
+        'predict',
+        JSON.stringify({
+          user_id: userId,
+          inventory_data: formattedInventory
+        })
+      ]);
 
-    let result = '';
-    let pythonError = '';
+      let result = '';
+      let pythonError = '';
 
-    pythonProcess.stdout.on('data', (data) => {
-      result += data.toString();
-    });
+      pythonProcess.stdout.on('data', (data) => {
+        result += data.toString();
+      });
 
-    pythonProcess.stderr.on('data', (data) => {
-      pythonError += data.toString();
-      console.error('Python Error:', data.toString());
-    });
+      pythonProcess.stderr.on('data', (data) => {
+        pythonError += data.toString();
+        console.error('Python Error:', data.toString());
+      });
 
-    pythonProcess.on('error', (error) => {
-      console.error('Failed to start Python process:', error);
-      throw new Error(`Python process error: ${error.message}`);
-    });
+      pythonProcess.on('error', (error) => {
+        console.error('Python process error:', error);
+        reject(new Error(`Failed to start Python process: ${error.message}`));
+      });
 
-    await new Promise((resolve, reject) => {
       pythonProcess.on('close', (code) => {
         if (code !== 0) {
+          console.error('Python process failed:', pythonError);
           reject(new Error(`Python process failed: ${pythonError}`));
-        } else {
-          try {
-            const predictionData = JSON.parse(result);
-            resolve(predictionData);
-          } catch (error) {
-            reject(new Error(`Failed to parse prediction results: ${error.message}`));
-          }
+          return;
+        }
+
+        try {
+          console.log('Raw Python output:', result);
+          resolve(JSON.parse(result.trim()));
+        } catch (error) {
+          console.error('Failed to parse Python output:', error);
+          console.error('Raw output:', result);
+          reject(new Error('Failed to parse prediction results'));
         }
       });
-    }).then(predictionData => {
-      res.json(predictionData);
-    }).catch(error => {
-      throw error;
     });
+
+    res.json(predictionData);
 
   } catch (error) {
     console.error('Prediction error:', error);
