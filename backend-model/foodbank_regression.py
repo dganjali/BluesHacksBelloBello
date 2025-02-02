@@ -6,7 +6,7 @@ from sklearn.ensemble import RandomForestRegressor
 from datetime import datetime
 import os
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore') ## ignore privacy wrnings for unidentified excel files, for instance
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
